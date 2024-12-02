@@ -1,0 +1,126 @@
+import 'package:dynamic_color/dynamic_color.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localized_locales/flutter_localized_locales.dart';
+import 'package:oktoast/oktoast.dart';
+import 'package:provider/provider.dart';
+import 'package:quranku/core/network/networkInfo/network_info_bloc.dart';
+import 'package:quranku/core/utils/extension/context_ext.dart';
+import 'package:quranku/core/utils/themes/theme.dart';
+import 'package:quranku/features/quran/presentation/bloc/juz/juz_cubit.dart';
+import 'package:quranku/features/quran/presentation/bloc/lastRead/last_read_cubit.dart';
+import 'package:quranku/features/quran/presentation/screens/quran_screen.dart';
+import 'package:quranku/features/shalat/presentation/bloc/shalat/shalat_bloc.dart';
+import 'package:quranku/generated/locale_keys.g.dart';
+import 'package:quranku/injection.dart';
+import 'package:quranku/theme_provider.dart';
+
+import 'features/quran/presentation/bloc/surah/surah_bloc.dart';
+import 'features/setting/presentation/bloc/language_setting/language_setting_bloc.dart';
+import 'features/setting/presentation/bloc/styling_setting/styling_setting_bloc.dart';
+
+class App extends StatelessWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final locale = context.locale;
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<NetworkInfoBloc>(
+          create: (context) => sl<NetworkInfoBloc>(),
+        ),
+        BlocProvider<SurahBloc>(
+          create: (context) => sl<SurahBloc>()..add(const SurahFetchEvent()),
+        ),
+        BlocProvider<JuzBloc>(
+          create: (context) => sl<JuzBloc>(),
+        ),
+        BlocProvider<ShalatBloc>(
+          create: (context) => sl<ShalatBloc>()..add(ShalatEvent.init(locale)),
+        ),
+        BlocProvider<LastReadCubit>(
+          create: (context) => sl<LastReadCubit>()
+            ..getLastReadJuz()
+            ..getLastReadSurah(),
+        ),
+        BlocProvider<LanguageSettingBloc>(
+          create: (context) => sl<LanguageSettingBloc>()
+            ..add(const LanguageSettingEvent.getLatinLanguage())
+            ..add(const LanguageSettingEvent.getPrayerLanguage())
+            ..add(const LanguageSettingEvent.getQuranLanguage()),
+        ),
+        BlocProvider<StylingSettingBloc>(
+          create: (context) =>
+              sl<StylingSettingBloc>()..add(const StylingSettingEvent.init()),
+        ),
+      ],
+      child: OKToast(
+        textAlign: TextAlign.center,
+        textPadding: const EdgeInsets.all(10),
+        radius: 5,
+        position: ToastPosition.bottom,
+        child: ChangeNotifierProvider(
+          create: (context) => sl<ThemeProvider>()..init(),
+          child: Consumer<ThemeProvider>(
+            builder: (context, themeProvider, child) {
+              final isDynamicColor = themeProvider.dynamicColor;
+              return DynamicColorBuilder(
+                builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+                  return MaterialApp(
+                    title: LocaleKeys.appName.tr(),
+                    debugShowCheckedModeBanner: false,
+                    theme: themeData(
+                      isDarkMode: false,
+                      colorScheme: isDynamicColor ? lightDynamic : null,
+                    ),
+                    darkTheme: themeData(
+                      isDarkMode: true,
+                      colorScheme: isDynamicColor ? darkDynamic : null,
+                    ),
+                    themeMode: themeProvider.themeMode,
+                    localizationsDelegates: [
+                      for (var delegate in context.localizationDelegates)
+                        delegate,
+                      const LocaleNamesLocalizationsDelegate(),
+                    ],
+                    supportedLocales: context.supportedLocales,
+                    locale: context.locale,
+                    home: const ScaffoldConnection(),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ScaffoldConnection extends StatelessWidget {
+  const ScaffoldConnection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: BlocBuilder<NetworkInfoBloc, NetworkInfoState>(
+        builder: (context, state) {
+          if (state is NetworkInfoDisconnectedState) {
+            return FloatingActionButton(
+              onPressed: () {
+                context.showErrorToast(
+                  LocaleKeys.noInternetConnection.tr(),
+                );
+              },
+              child: const Icon(Icons.signal_wifi_off_outlined),
+            );
+          }
+          return const SizedBox();
+        },
+      ),
+      body: const QuranScreen(),
+    );
+  }
+}
